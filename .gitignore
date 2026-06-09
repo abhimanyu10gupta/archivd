@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.npm-cache/
+
+# Build
+dist/
+src-tauri/target/
+
+# Vite / TypeScript
+.vite/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test / coverage
+coverage/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env (keep .env.example if you add one later)
+.env
+.env.*
+!.env.example
+
+# Tauri (Windows bundle tooling)
+src-tauri/WixTools/
