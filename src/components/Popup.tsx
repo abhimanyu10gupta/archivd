@@ -4,13 +4,15 @@ import {
   listMarkdownFiles,
   saveEntry,
   hideWindow,
+  type CaptureMetadata,
 } from "../lib/api";
 
 interface PopupProps {
   capturedText: string;
+  captureMetadata: CaptureMetadata;
 }
 
-export default function Popup({ capturedText }: PopupProps) {
+export default function Popup({ capturedText, captureMetadata }: PopupProps) {
   const [projects, setProjects] = useState<string[]>([]);
   const [files, setFiles] = useState<string[]>([]);
   const [project, setProject] = useState("");
@@ -64,14 +66,14 @@ export default function Popup({ capturedText }: PopupProps) {
     setSaving(true);
     setError(null);
     try {
-      await saveEntry(projectName, fileName, capturedText);
+      await saveEntry(projectName, fileName, capturedText, captureMetadata);
       await hideWindow("popup");
     } catch (e) {
       setError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [project, file, capturedText]);
+  }, [project, file, capturedText, captureMetadata]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -106,9 +108,25 @@ export default function Popup({ capturedText }: PopupProps) {
       </div>
 
       <div className="mb-3 rounded-md border border-surface-border bg-surface-raised p-3">
-        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-white/40">
-          Captured
-        </p>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
+            Captured
+          </p>
+          <p className="truncate text-[10px] text-white/40">
+            Source:{" "}
+            <span className="text-white/60">{captureMetadata.source_name}</span>
+          </p>
+        </div>
+        {captureMetadata.url && (
+          <p className="mb-1 truncate font-mono text-[10px] text-white/35">
+            {captureMetadata.url}
+          </p>
+        )}
+        {!captureMetadata.url && captureMetadata.window_title && (
+          <p className="mb-2 truncate text-[10px] text-white/35">
+            {captureMetadata.window_title}
+          </p>
+        )}
         <p className="line-clamp-4 font-mono text-xs leading-relaxed text-white/70">
           {preview || <span className="italic text-white/30">Empty</span>}
         </p>

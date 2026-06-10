@@ -4,6 +4,13 @@ export interface AppSettings {
   base_dir: string;
 }
 
+export interface CaptureMetadata {
+  source_app: string;
+  source_name: string;
+  url?: string | null;
+  window_title?: string | null;
+}
+
 export async function captureClipboard(): Promise<string> {
   return invoke<string>("capture_clipboard");
 }
@@ -20,8 +27,14 @@ export async function saveEntry(
   project: string,
   file: string,
   text: string,
+  metadata: CaptureMetadata,
 ): Promise<void> {
-  return invoke("save_entry", { project, file, text });
+  return invoke("save_entry", {
+    project,
+    file,
+    text,
+    metadata,
+  });
 }
 
 export async function getSettings(): Promise<AppSettings> {

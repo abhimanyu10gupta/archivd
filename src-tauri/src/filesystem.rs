@@ -1,4 +1,6 @@
 use crate::settings::{base_dir, expand_path};
+use crate::metadata::{append_clip_record, ClipRecord};
+use crate::source::CaptureMetadata;
 use chrono::Local;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -81,7 +83,12 @@ fn normalize_filename(file: &str) -> String {
     }
 }
 
-pub fn save_entry(project: &str, file: &str, text: &str) -> Result<(), String> {
+pub fn save_entry(
+    project: &str,
+    file: &str,
+    text: &str,
+    metadata: &CaptureMetadata,
+) -> Result<(), String> {
     let project = validate_name(project, "Project")?;
     let file = normalize_filename(&validate_name(file, "File")?);
 
@@ -93,7 +100,7 @@ pub fn save_entry(project: &str, file: &str, text: &str) -> Result<(), String> {
         fs::write(&file_path, format!("# {file}\n")).map_err(|e| e.to_string())?;
     }
 
-    let entry = format_entry(text);
+    let entry = format_entry(text, &project, metadata);
 
     let mut f = OpenOptions::new()
         .create(true)
@@ -104,10 +111,13 @@ pub fn save_entry(project: &str, file: &str, text: &str) -> Result<(), String> {
     f.write_all(entry.as_bytes())
         .map_err(|e| e.to_string())?;
 
+    let clip = ClipRecord::new(&project, &file, text, metadata);
+    append_clip_record(&project_dir, &file, &clip)?;
+
     Ok(())
 }
 
-fn format_entry(text: &str) -> String {
+fn format_entry(text: &str, project: &str, metadata: &CaptureMetadata) -> String {
     let now = Local::now().format("%Y-%m-%d %I:%M %p").to_string();
     let lines: Vec<&str> = text.lines().collect();
     let body = if lines.is_empty() {
@@ -121,7 +131,24 @@ fn format_entry(text: &str) -> String {
             + "\n"
     };
 
-    format!("\n## {now}\n\nSource: Clipboard\n\n{body}\n")
+    let source_name = if metadata.source_name.trim().is_empty() {
+        "Clipboard"
+    } else {
+        metadata.source_name.trim()
+    };
+
+    let mut meta_lines = vec![
+        format!("Source: {source_name}"),
+        format!("Project: {project}"),
+    ];
+
+    if let Some(url) = metadata.url.as_ref().map(|u| u.trim()).filter(|u| !u.is_empty()) {
+        meta_lines.push(format!("URL: {url}"));
+    }
+
+    let meta_block = meta_lines.join("\n");
+
+    format!("\n## {now}\n\n{meta_block}\n\n{body}\n")
 }
 
 pub fn create_sample_structure() -> Result<(), String> {

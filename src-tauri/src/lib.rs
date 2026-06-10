@@ -1,8 +1,11 @@
 mod clipboard;
 mod filesystem;
+mod metadata;
 mod settings;
+mod source;
 
 use settings::{load_settings, save_settings, AppSettings};
+use source::CaptureMetadata;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::{
@@ -39,8 +42,13 @@ fn list_markdown_files(project: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn save_entry(project: String, file: String, text: String) -> Result<(), String> {
-    filesystem::save_entry(&project, &file, &text)
+fn save_entry(
+    project: String,
+    file: String,
+    text: String,
+    metadata: CaptureMetadata,
+) -> Result<(), String> {
+    filesystem::save_entry(&project, &file, &text, &metadata)
 }
 
 #[tauri::command]
@@ -66,14 +74,21 @@ fn hide_window(app: AppHandle, label: String) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
 }
 
-fn show_popup(app: &AppHandle, text: String) -> Result<(), String> {
+fn show_popup(app: &AppHandle, text: String, metadata: CaptureMetadata) -> Result<(), String> {
     let popup = app
         .get_webview_window("popup")
         .ok_or("Popup window not found")?;
 
     let id = CAPTURE_ID.fetch_add(1, Ordering::SeqCst);
     popup
-        .emit("show-popup", serde_json::json!({ "text": text, "id": id }))
+        .emit(
+            "show-popup",
+            serde_json::json!({
+                "text": text,
+                "id": id,
+                "metadata": metadata,
+            }),
+        )
         .map_err(|e| e.to_string())?;
 
     popup.center().map_err(|e| e.to_string())?;
@@ -112,18 +127,20 @@ fn trigger_capture(app: &AppHandle) {
             let _ = popup.hide();
         }
 
-        // Brief pause for macOS to restore focus to the previous app
+        // Brief pause for macOS to restore focus before detecting source
         std::thread::sleep(Duration::from_millis(80));
+
+        let metadata = source::detect_frontmost_source();
 
         match clipboard::capture_selection() {
             Ok(text) => {
-                if let Err(e) = show_popup(&app, text) {
+                if let Err(e) = show_popup(&app, text, metadata) {
                     eprintln!("Failed to show popup: {e}");
                 }
             }
             Err(e) => {
                 eprintln!("Clipboard capture failed: {e}");
-                let _ = show_popup(&app, String::new());
+                let _ = show_popup(&app, String::new(), metadata);
             }
         }
     }) {
