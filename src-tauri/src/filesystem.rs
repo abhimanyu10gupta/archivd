@@ -112,7 +112,7 @@ pub fn save_entry(
         .map_err(|e| e.to_string())?;
 
     let clip = ClipRecord::new(&project, &file, text, metadata);
-    append_clip_record(&project_dir, &file, &clip)?;
+    append_clip_record(&base_dir(), &project, &file, &clip)?;
 
     Ok(())
 }

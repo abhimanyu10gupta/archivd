@@ -1,6 +1,7 @@
 use crate::source::CaptureMetadata;
 use chrono::Local;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -54,8 +55,43 @@ impl ClipRecord {
     }
 }
 
-pub fn append_clip_record(project_dir: &Path, md_file: &str, record: &ClipRecord) -> Result<(), String> {
-    let jsonl_path = jsonl_path_for_markdown(project_dir, md_file);
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct MetadataIndex {
+    version: u32,
+    updated_at: String,
+    projects: HashMap<String, ProjectIndexEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct ProjectIndexEntry {
+    updated_at: String,
+    files: HashMap<String, FileIndexEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FileIndexEntry {
+    jsonl: String,
+    updated_at: String,
+    last_clip_id: String,
+}
+
+pub fn jsonl_path_for_markdown(base: &Path, project: &str, md_file: &str) -> PathBuf {
+    let stem = md_file.strip_suffix(".md").unwrap_or(md_file);
+    base.join(".archivd").join(project).join(format!("{stem}.jsonl"))
+}
+
+pub fn jsonl_relative_path(project: &str, md_file: &str) -> String {
+    let stem = md_file.strip_suffix(".md").unwrap_or(md_file);
+    format!("{project}/{stem}.jsonl")
+}
+
+pub fn append_clip_record(
+    base: &Path,
+    project: &str,
+    md_file: &str,
+    record: &ClipRecord,
+) -> Result<(), String> {
+    let jsonl_path = jsonl_path_for_markdown(base, project, md_file);
     if let Some(parent) = jsonl_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -72,12 +108,50 @@ pub fn append_clip_record(project_dir: &Path, md_file: &str, record: &ClipRecord
         .map_err(|e| e.to_string())?;
     file.write_all(b"\n").map_err(|e| e.to_string())?;
 
+    update_index(base, project, md_file, record)?;
+
     Ok(())
 }
 
-pub fn jsonl_path_for_markdown(project_dir: &Path, md_file: &str) -> PathBuf {
-    let stem = md_file.strip_suffix(".md").unwrap_or(md_file);
-    project_dir.join(".archivd").join(format!("{stem}.jsonl"))
+fn update_index(base: &Path, project: &str, md_file: &str, record: &ClipRecord) -> Result<(), String> {
+    let index_path = base.join(".archivd").join("index.json");
+    fs::create_dir_all(base.join(".archivd")).map_err(|e| e.to_string())?;
+
+    let mut index = load_index(&index_path);
+    let now = Local::now().to_rfc3339();
+
+    index.version = 1;
+    index.updated_at = now.clone();
+
+    let project_entry = index.projects.entry(project.to_string()).or_default();
+    project_entry.updated_at = now.clone();
+
+    project_entry.files.insert(
+        md_file.to_string(),
+        FileIndexEntry {
+            jsonl: jsonl_relative_path(project, md_file),
+            updated_at: now,
+            last_clip_id: record.id.clone(),
+        },
+    );
+
+    let data = serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?;
+    fs::write(&index_path, data).map_err(|e| e.to_string())
+}
+
+fn load_index(path: &Path) -> MetadataIndex {
+    if !path.exists() {
+        return MetadataIndex {
+            version: 1,
+            updated_at: String::new(),
+            projects: HashMap::new(),
+        };
+    }
+
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default()
 }
 
 fn generate_clip_id() -> String {
@@ -90,11 +164,19 @@ mod tests {
     use crate::source::CaptureMetadata;
 
     #[test]
-    fn jsonl_path_mirrors_markdown_file() {
-        let dir = Path::new("/tmp/playgrnd");
+    fn jsonl_path_under_root_archivd() {
+        let base = Path::new("/tmp/Archivd");
         assert_eq!(
-            jsonl_path_for_markdown(dir, "decisions.md"),
-            dir.join(".archivd/decisions.jsonl")
+            jsonl_path_for_markdown(base, "playgrnd", "decisions.md"),
+            base.join(".archivd/playgrnd/decisions.jsonl")
+        );
+    }
+
+    #[test]
+    fn jsonl_relative_path_format() {
+        assert_eq!(
+            jsonl_relative_path("playgrnd", "decisions.md"),
+            "playgrnd/decisions.jsonl"
         );
     }
 
