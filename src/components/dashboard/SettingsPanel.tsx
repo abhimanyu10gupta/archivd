@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { getSettings, saveSettings, ensureBaseDir, hideWindow } from "../lib/api";
+import {
+  getSettings,
+  saveSettings,
+  ensureBaseDir,
+  openBaseDir,
+  loadClips,
+} from "../../lib/api";
 
-export default function Settings() {
+interface SettingsPanelProps {
+  onRefresh: () => void;
+}
+
+export default function SettingsPanel({ onRefresh }: SettingsPanelProps) {
   const [baseDir, setBaseDir] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -22,9 +32,7 @@ export default function Settings() {
         defaultPath: baseDir || undefined,
         title: "Choose Archivd base directory",
       });
-      if (typeof selected === "string") {
-        setBaseDir(selected);
-      }
+      if (typeof selected === "string") setBaseDir(selected);
     } catch (e) {
       setError(String(e));
     }
@@ -38,6 +46,7 @@ export default function Settings() {
       await saveSettings({ base_dir: baseDir.trim() });
       await ensureBaseDir();
       setMessage("Settings saved");
+      onRefresh();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -45,25 +54,12 @@ export default function Settings() {
     }
   };
 
-  const handleClose = async () => {
-    await hideWindow("settings");
-  };
-
   const inputClass =
     "flex-1 rounded-md border border-surface-border bg-surface-raised px-3 py-2 font-mono text-sm text-white outline-none focus:border-accent";
 
   return (
-    <div className="flex h-screen flex-col bg-surface p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
-        <button
-          type="button"
-          onClick={handleClose}
-          className="text-sm text-white/40 transition hover:text-white"
-        >
-          Close
-        </button>
-      </div>
+    <div className="max-w-xl p-6">
+      <h2 className="mb-6 text-lg font-semibold text-white">Settings</h2>
 
       <div className="mb-6">
         <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/40">
@@ -80,25 +76,37 @@ export default function Settings() {
           <button
             type="button"
             onClick={handleBrowse}
-            className="shrink-0 rounded-md border border-surface-border px-3 py-2 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+            className="shrink-0 rounded-md border border-surface-border px-3 py-2 text-sm text-white/70 hover:bg-white/5"
           >
             Browse
           </button>
         </div>
-        <p className="mt-2 text-xs text-white/30">
-          Type a custom path or browse to select a folder. Projects are
-          subfolders inside this directory.
-        </p>
+      </div>
+
+      <div className="mb-6 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => openBaseDir()}
+          className="rounded-md border border-surface-border px-3 py-2 text-sm text-white/70 hover:bg-white/5"
+        >
+          Open in Finder
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            await loadClips();
+            onRefresh();
+            setMessage("Archive refreshed");
+          }}
+          className="rounded-md border border-surface-border px-3 py-2 text-sm text-white/70 hover:bg-white/5"
+        >
+          Refresh Archive
+        </button>
       </div>
 
       <div className="mb-6 rounded-md border border-surface-border bg-surface-raised p-4">
-        <p className="mb-1 text-xs font-medium uppercase tracking-wider text-white/40">
-          Hotkey
-        </p>
-        <p className="font-mono text-sm text-white/70">⌘ + Shift + A</p>
-        <p className="mt-1 text-xs text-white/30">
-          Hotkey customization coming soon.
-        </p>
+        <p className="text-xs text-white/40">Capture hotkey</p>
+        <p className="mt-1 font-mono text-sm text-white/70">⌘ + Shift + A</p>
       </div>
 
       {error && <p className="mb-3 text-xs text-red-400">{error}</p>}
@@ -108,7 +116,7 @@ export default function Settings() {
         type="button"
         onClick={handleSave}
         disabled={saving || !baseDir.trim()}
-        className="mt-auto rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-40"
+        className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-40"
       >
         {saving ? "Saving…" : "Save Settings"}
       </button>

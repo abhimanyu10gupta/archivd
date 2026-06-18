@@ -1,3 +1,4 @@
+mod archive;
 mod clipboard;
 mod filesystem;
 mod metadata;
@@ -71,7 +72,45 @@ fn hide_window(app: AppHandle, label: String) -> Result<(), String> {
     let window = app
         .get_webview_window(&label)
         .ok_or_else(|| format!("Window '{label}' not found"))?;
-    window.hide().map_err(|e| e.to_string())
+    window.hide().map_err(|e| e.to_string())?;
+
+    if label == "dashboard" {
+        #[cfg(target_os = "macos")]
+        let _ = app.set_dock_visibility(false);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn load_clips() -> Result<Vec<archive::Clip>, String> {
+    archive::load_all_clips()
+}
+
+#[tauri::command]
+fn toggle_star(clip_id: String) -> Result<bool, String> {
+    archive::toggle_star(&clip_id)
+}
+
+#[tauri::command]
+fn open_path(path: String) -> Result<(), String> {
+    archive::open_path(&path)
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    archive::open_url(&url)
+}
+
+#[tauri::command]
+fn reveal_in_finder(path: String) -> Result<(), String> {
+    archive::reveal_in_finder(&path)
+}
+
+#[tauri::command]
+fn open_base_dir() -> Result<(), String> {
+    let base = settings::base_dir();
+    archive::reveal_in_finder(&base.to_string_lossy())
 }
 
 fn show_popup(app: &AppHandle, text: String, metadata: CaptureMetadata) -> Result<(), String> {
@@ -98,15 +137,31 @@ fn show_popup(app: &AppHandle, text: String, metadata: CaptureMetadata) -> Resul
     Ok(())
 }
 
+fn show_dashboard(app: &AppHandle) -> Result<(), String> {
+    let dashboard = app
+        .get_webview_window("dashboard")
+        .ok_or("Dashboard window not found")?;
+
+    dashboard.center().map_err(|e| e.to_string())?;
+    dashboard.show().map_err(|e| e.to_string())?;
+    dashboard.set_focus().map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    let _ = app.set_dock_visibility(true);
+
+    dashboard
+        .emit("dashboard-opened", ())
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 fn show_settings(app: &AppHandle) -> Result<(), String> {
-    let settings = app
-        .get_webview_window("settings")
-        .ok_or("Settings window not found")?;
-
-    settings.center().map_err(|e| e.to_string())?;
-    settings.show().map_err(|e| e.to_string())?;
-    settings.set_focus().map_err(|e| e.to_string())?;
-
+    show_dashboard(app)?;
+    app.get_webview_window("dashboard")
+        .ok_or("Dashboard window not found")?
+        .emit("navigate", "settings")
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -165,16 +220,20 @@ fn register_hotkey(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let dashboard_item = MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
     let capture = MenuItem::with_id(app, "capture", "Capture (⌘⇧A)", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&capture, &settings_item, &quit])?;
+    let menu = Menu::with_items(app, &[&dashboard_item, &capture, &settings_item, &quit])?;
 
     let _tray = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
+            "dashboard" => {
+                let _ = show_dashboard(app);
+            }
             "capture" => trigger_capture(app),
             "settings" => {
                 let _ = show_settings(app);
@@ -190,7 +249,7 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             } = event
             {
                 let app = tray.app_handle();
-                let _ = show_settings(app);
+                let _ = show_dashboard(app);
             }
         })
         .build(app)?;
@@ -228,13 +287,19 @@ pub fn run() {
             save_settings_cmd,
             ensure_base_dir,
             hide_window,
+            load_clips,
+            toggle_star,
+            open_path,
+            open_url,
+            reveal_in_finder,
+            open_base_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 fn hide_on_close(app: &AppHandle) {
-    for label in ["popup", "settings"] {
+    for label in ["popup", "settings", "dashboard"] {
         if let Some(window) = app.get_webview_window(label) {
             let w = window.clone();
             window.on_window_event(move |event| {

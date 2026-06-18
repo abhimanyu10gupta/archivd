@@ -2,10 +2,8 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import Popup from "./components/Popup";
-import Settings from "./components/Settings";
+import Dashboard from "./components/dashboard/Dashboard";
 import type { CaptureMetadata } from "./lib/api";
-
-type View = "popup" | "settings";
 
 interface ShowPopupPayload {
   text: string;
@@ -21,42 +19,44 @@ const defaultMetadata: CaptureMetadata = {
 };
 
 function App() {
-  const [view, setView] = useState<View>("popup");
+  const [windowLabel, setWindowLabel] = useState<string>("");
   const [capturedText, setCapturedText] = useState("");
   const [captureId, setCaptureId] = useState(0);
   const [captureMetadata, setCaptureMetadata] =
     useState<CaptureMetadata>(defaultMetadata);
 
   useEffect(() => {
-    const label = getCurrentWindow().label;
-    if (label === "settings") {
-      setView("settings");
-    }
+    setWindowLabel(getCurrentWindow().label);
   }, []);
 
   useEffect(() => {
+    if (windowLabel !== "popup") return;
+
     const unlisten = listen<ShowPopupPayload>("show-popup", (event) => {
       setCapturedText(event.payload.text);
       setCaptureId(event.payload.id);
       setCaptureMetadata(event.payload.metadata ?? defaultMetadata);
-      setView("popup");
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [windowLabel]);
 
-  if (view === "settings") {
-    return <Settings />;
+  if (windowLabel === "dashboard") {
+    return <Dashboard />;
   }
 
-  return (
-    <Popup
-      key={captureId}
-      capturedText={capturedText}
-      captureMetadata={captureMetadata}
-    />
-  );
+  if (windowLabel === "popup") {
+    return (
+      <Popup
+        key={captureId}
+        capturedText={capturedText}
+        captureMetadata={captureMetadata}
+      />
+    );
+  }
+
+  return null;
 }
 
 export default App;

@@ -26,15 +26,16 @@
         "skipTaskbar": true
       },
       {
-        "label": "settings",
-        "title": "Archivd Settings",
-        "width": 480,
-        "height": 360,
-        "resizable": false,
+        "label": "dashboard",
+        "title": "Archivd",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
         "decorations": true,
         "visible": false,
-        "center": true,
-        "skipTaskbar": true
+        "center": true
       }
     ],
     "security": {
